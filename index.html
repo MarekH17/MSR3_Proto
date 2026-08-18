@@ -1,19 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script>
-(function(){
-  if (sessionStorage.getItem('msr3_auth') !== 'ok') {
-    var p = prompt('Enter password to view this site:');
-    if (p === 'MSR3') {
-      sessionStorage.setItem('msr3_auth', 'ok');
-    } else {
-      document.documentElement.innerHTML = '<h1 style="font-family:sans-serif;text-align:center;margin-top:20%">Access denied</h1>';
-      throw new Error('unauthorized');
-    }
-  }
-})();
-</script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Screenrights — Prototype</title>
@@ -691,7 +678,7 @@
   .onb-connector{width:56px;height:2px;background:var(--line2);margin:15px 8px 0;flex:0 0 auto;}
   .onb-connector.done{background:var(--red);}
   .onb-body{max-width:820px;margin:0 auto;padding:32px;}   /* one consistent, centred content column for every step */
-  .onb-h{font-size:22px;font-weight:600;color:var(--red);margin:0 0 24px;}
+  .onb-h{font-size:22px;font-weight:600;color:var(--text);margin:0 0 24px;}
   .onb-sec{font-size:16px;font-weight:500;color:var(--text);margin:28px 0 12px;}   /* = secTitle() */
   .onb-sec.first{margin-top:0;}
   /* Cards reuse Workspace Settings' .settings-sec > .panel (24px padding, 8px
