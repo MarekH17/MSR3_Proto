@@ -1,6 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+(function(){
+  if (sessionStorage.getItem('msr3_auth') !== 'ok') {
+    var p = prompt('Enter password to view this site:');
+    if (p === 'MSR3') {
+      sessionStorage.setItem('msr3_auth', 'ok');
+    } else {
+      document.documentElement.innerHTML = '<h1 style="font-family:sans-serif;text-align:center;margin-top:20%">Access denied</h1>';
+      throw new Error('unauthorized');
+    }
+  }
+})();
+</script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Screenrights — Prototype</title>
