@@ -1758,7 +1758,7 @@ function stmtRows(key){
 }
 function stmtBody(key){
   return '<table><thead><tr>'+
-      '<th>Date '+ar+'</th><th>Service '+ar+'</th><th>Amount '+ar+'</th><th>Currency '+ar+'</th><th></th>'+
+      '<th>Date '+ar+'</th><th>Service</th><th>Amount '+ar+'</th><th>Currency '+ar+'</th><th></th>'+
     '</tr></thead><tbody>'+stmtRows(key)+'</tbody></table>'+
     '<div class="tbl-foot"><span>1–2 of 2</span>'+camPager+'</div>';
 }
@@ -3140,7 +3140,7 @@ function esViewHTML(cfg, view){
   ES_STATE = { cfg, view, withTitle, withId, rows };
   ES_PAGE = 1;
   const head = '<tr><th>Date '+ar+'</th>'+(withId?'<th>ID '+ar+'</th>':'')+(withTitle?'<th>Title '+ar+'</th>':'')+
-    '<th>Service '+ar+'</th><th>Amount '+ar+'</th><th>Currency '+ar+'</th><th style="text-align:right;">Download</th></tr>';
+    '<th>Service</th><th>Amount '+ar+'</th><th>Currency '+ar+'</th><th style="text-align:right;">Download</th></tr>';
   const body = pageSlice(rows, 1, ES_PAGE_SIZE).map(esRowHTML).join('');
   return '<div class="toolbar">'+
       '<div class="search" style="flex:0 0 300px;max-width:300px;">'+MAGNIFY+'<input id="es-search" placeholder="'+searchPh+'" oninput="filterStatements()"/></div>'+
