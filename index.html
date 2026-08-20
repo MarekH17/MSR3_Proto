@@ -972,6 +972,9 @@
     <div class="fab-row" style="margin-top:12px;"><span>Loading time (ms)</span>
       <input type="number" id="flag-mimicdur" class="fab-num" min="0" step="100" value="1500" onchange="setMimicDuration(this.value)">
     </div>
+    <div class="fab-row" style="margin-top:12px;"><span>Persistent Load</span>
+      <label class="switch"><input type="checkbox" id="flag-persistload" onchange="setFlag('persistentLoad', this.checked)"><span class="slider"></span></label>
+    </div>
 
     <div class="fab-divider"></div>
     <div class="fab-acc" id="acc-member">
@@ -2489,7 +2492,7 @@ function renderDetail(id){
     const metaKeys=['Year of production','Type']
       .concat(FLAGS.agentWorkspace ? ['Client'] : [])
       .concat(['Status']);
-    const placeholderMeta = FLAGS.mimicLoading
+    const placeholderMeta = loadingActive()
       ? '<div class="detail-meta is-placeholder">'+
           metaKeys.map(k=>'<div><p class="dm-lbl">'+k+'</p><p class="dm-val">&nbsp;</p></div>').join('')+
         '</div>'
@@ -3546,7 +3549,7 @@ function renderStub(name){
 /* ------------------------------------------------------------------ */
 /*  Prototype variation flags (floating control panel)                 */
 /* ------------------------------------------------------------------ */
-const FLAGS = { multiBank:false, agentWorkspace:true, mimicLoading:true, mimicDuration:1500,
+const FLAGS = { multiBank:false, agentWorkspace:true, mimicLoading:true, mimicDuration:1500, persistentLoad:false,
   // homepage banners, per type (informative on by default; others hidden)
   bannerInfo:true, bannerWarning:false, bannerDanger:false,
   advancedFilters:true,    // advanced filtering on the Titles page (now the default, no toggle)
@@ -4363,6 +4366,12 @@ function setFlag(key, val){
   if(BANNER_KEYS.indexOf(key)>=0){ syncBannerAll(); routeFromHash(); return; }   // re-render home banners
   if(key==='mimicLoading'){ return; }                      // only affects the next navigation
   if(key==='mimicDuration'){ return; }                     // read live on the next navigation
+  if(key==='persistentLoad'){
+    // turning off: clear the nav count badge, which lives outside #view and may
+    // be frozen if Mimic Loading is also off (so no load pass runs to restore it)
+    if(!val){ const nav=document.getElementById('nav-task-count'); if(nav) nav.classList.remove('skel-count'); }
+    PREV_ROUTE=''; routeFromHash(); return;   // force a fresh load pass: on -> freeze skeletons now, off -> restore
+  }
   if(key==='advancedFilters'){ routeFromHash(); return; }  // re-render Titles page controls
   if(key==='clientSummary'){ routeFromHash(); return; }    // toggles the Client Summary page + its entry points
   if(key==='titleSorting'){ TSORT='az'; routeFromHash(); return; }   // re-render the Titles toolbar
@@ -4439,6 +4448,13 @@ const SKEL_BANNER =
     '</div>'+
   '</div>';
 function mimicMs(){ return Math.max(0, parseInt(FLAGS.mimicDuration,10) || 0); }
+// Whether a page-load skeleton pass should run at all. Persistent Load works
+// independently of Mimic Loading: it forces the loading state even when Mimic
+// Loading is off (and then freezes it, since mimicSchedule never restores).
+function loadingActive(){ return FLAGS.mimicLoading || FLAGS.persistentLoad; }
+// Schedules a skeleton-restore. When Persistent Load is on we never restore, so
+// the loading state stays on screen indefinitely (for inspecting the skeletons).
+function mimicSchedule(fn){ return FLAGS.persistentLoad ? undefined : setTimeout(fn, mimicMs()); }
 // Table skeleton: keep the real <thead>, replace every cell value with a pill.
 // Widths vary a little per column so the rows don't look mechanical.
 function skelTableRows(cols, rows, iconLast){
@@ -4547,7 +4563,7 @@ function mimicDisable(root){
 // Swap every table body inside `scope` for skeleton rows, disable its controls,
 // then restore. Used by the Earnings Statements pages (and any other table view).
 function mimicTableLoading(scope){
-  if(!FLAGS.mimicLoading) return;
+  if(!loadingActive()) return;
   const root = (typeof scope==='string') ? document.getElementById(scope) : scope;
   if(!root) return;
   const hasTable=!!root.querySelectorAll('table tbody').length;
@@ -4555,14 +4571,14 @@ function mimicTableLoading(scope){
   const restoreTables = hasTable ? mimicSwapTables(root) : mimicSwapEmpty(root);
   const restoreCtrls=mimicDisable(root);
   clearTimeout(root.__tblT);
-  root.__tblT=setTimeout(function(){ restoreTables(); restoreCtrls(); }, mimicMs());
+  root.__tblT=mimicSchedule(function(){ restoreTables(); restoreCtrls(); });
 }
 // Title / Client Summary pages: skeleton the page title, the header meta pairs,
 // every section heading, and each section's body (cards or tables). The CAM
 // section additionally hides its access-level tagline and collapses its tab
 // strip into a plain skeleton bar.
 function mimicDetailLoading(){
-  if(!FLAGS.mimicLoading) return;
+  if(!loadingActive()) return;
   const hdr=document.getElementById('header-slot'), view=document.getElementById('view');
   if(!view) return;
   const restores=[];
@@ -4575,18 +4591,26 @@ function mimicDetailLoading(){
   view.querySelectorAll('.stmt-tabs').forEach(function(e){ restores.push(mimicTabStrip(e)); });
   restores.push(mimicSwapCards(view), mimicSwapTables(view), mimicSwapEmpty(view), mimicDisable(view));
   clearTimeout(window.__detailT);
-  window.__detailT=setTimeout(function(){
+  window.__detailT=mimicSchedule(function(){
     restores.forEach(function(fn){ fn(); });
     // placeholder meta exists only to be skeletoned — drop it once loading ends
     view.querySelectorAll('.detail-meta.is-placeholder').forEach(function(e){ if(e.parentNode) e.parentNode.removeChild(e); });
-  }, mimicMs());
+  });
 }
 // Counters (sidenav tasks badge, section counts, tab counts) grey out but keep their
 // shape. These only load ONCE per page load — counts are fetched up front, so they
 // shouldn't re-skeleton on every navigation or tab switch.
 let COUNTERS_LOADED=false;
 function mimicCounters(){
-  if(COUNTERS_LOADED) return function(){};
+  // Counters normally skeleton only on the first load of the session. Persistent
+  // Load overrides that so the count badges also show (and stay in) the loading
+  // state on every navigation — this bypass is limited to that toggle.
+  if(COUNTERS_LOADED && !FLAGS.persistentLoad){
+    // clear any badge left frozen by a prior persistent-load pass (e.g. the nav
+    // count, which lives outside #view and isn't re-rendered on navigation)
+    const nav=document.getElementById('nav-task-count'); if(nav) nav.classList.remove('skel-count');
+    return function(){};
+  }
   COUNTERS_LOADED=true;   // claim it immediately so concurrent calls don't double up
   const els=[];
   const nav=document.getElementById('nav-task-count'); if(nav) els.push(nav);
@@ -4626,11 +4650,11 @@ function mimicCardLoading(){
   const restoreEmpty=mimicSwapEmpty(view);
   const restoreCounters=mimicCounters(), restoreControls=mimicControls();
   clearTimeout(window.__mimicT);
-  window.__mimicT=setTimeout(function(){
+  window.__mimicT=mimicSchedule(function(){
     lists.forEach(function(el,i){ el.innerHTML=saved[i]; });
     if(bannerBox && savedBanners!==null) bannerBox.innerHTML=savedBanners;
     restoreEmpty(); restoreCounters(); restoreControls();
-  }, mimicMs());
+  });
 }
 // Tab switches (My Tasks on Home + the Tasks page) get the same skeleton treatment:
 // the real markup renders immediately, but its cards show as skeletons and its
@@ -4639,7 +4663,7 @@ function mimicTabSwap(boxId, html, isCardList){
   const box=document.getElementById(boxId); if(!box) return;
   const prevCount=Math.min(Math.max(box.querySelectorAll('.title-card,.task-card,.client-card,.skel-card').length,3),6);
   box.innerHTML=html;
-  if(!FLAGS.mimicLoading) return;
+  if(!loadingActive()) return;
   // the home snapshot IS the card list; the tasks page nests one inside its body
   const lists = isCardList ? [box] : Array.prototype.slice.call(box.querySelectorAll('.card-list'));
   const saved=[], disabled=[];
@@ -4654,11 +4678,11 @@ function mimicTabSwap(boxId, html, isCardList){
   box.querySelectorAll('.toolbar, .filters-row, .tbl-foot').forEach(function(e){ e.classList.add('ctrl-loading'); disabled.push(e); });
   const restoreCounters=mimicCounters();
   clearTimeout(box.__t);
-  box.__t=setTimeout(function(){
+  box.__t=mimicSchedule(function(){
     lists.forEach(function(el,i){ el.innerHTML=saved[i]; });
     disabled.forEach(function(e){ e.classList.remove('ctrl-loading'); });
     restoreEmpty(); restoreCounters();
-  }, mimicMs());
+  });
 }
 function render(route, arg){
   let navRoute = route, html;
@@ -4691,11 +4715,11 @@ function render(route, arg){
   document.getElementById('view').innerHTML       = i>=0 ? html.slice(i+M.length) : html;
 
   // skeleton loading: on entering Home / Titles, briefly show placeholder cards
-  if(FLAGS.mimicLoading && routeChanged && (route==='home'||route==='titles'||route==='tasks'||route==='clients')) mimicCardLoading();
+  if(loadingActive() && routeChanged && (route==='home'||route==='titles'||route==='tasks'||route==='clients')) mimicCardLoading();
   // tables (Earnings Statements pages) get the matching row-skeleton treatment
-  if(FLAGS.mimicLoading && routeChanged && EARNINGS[route]) mimicTableLoading('es-body');
+  if(loadingActive() && routeChanged && EARNINGS[route]) mimicTableLoading('es-body');
   // Title / Client Summary: header, meta, section headings + section bodies
-  if(FLAGS.mimicLoading && routeChanged && (route==='detail'||route==='client')) mimicDetailLoading();
+  if(loadingActive() && routeChanged && (route==='detail'||route==='client')) mimicDetailLoading();
 
   // active nav state
   document.querySelectorAll('.nav-item').forEach(n=>{
