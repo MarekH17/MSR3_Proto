@@ -1672,7 +1672,7 @@ function partyIcon(t){
 
 function camBody(key){
   if(key==='payments'){
-    const showClient = FLAGS.agentWorkspace;
+    const showClient = false;   // Client column intentionally hidden on the CAM Payments tab
     // Option B of the CAM Payments A/B test adds a Service column (DAS/CAM
     // badge per row) in place of the Title Statements Disbursements tab.
     const showSvc = AB.camPay==='B';
