@@ -1181,8 +1181,8 @@ const handshake = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"
 /* ------------------------------------------------------------------ */
 // service key -> label + css class
 const SERVICES = {
-  anz:{label:"ROY ANZ", cls:"anz"},
-  int:{label:"ROY WORLD", cls:"int"},
+  anz:{label:"Royalties ANZ", cls:"anz"},
+  int:{label:"Royalties World", cls:"int"},
   das:{label:"DAS", cls:"das"},
   cam:{label:"CAM", cls:"cam"},
   res:{label:"RES", cls:"res"},
@@ -1673,10 +1673,17 @@ function partyIcon(t){
 function camBody(key){
   if(key==='payments'){
     const showClient = FLAGS.agentWorkspace;
-    const rows=[1,2].map(()=>(
-      '<tr><td>16 Feb 2025</td>'+(showClient?'<td>'+CC()+'</td>':'')+'<td>123,456.78</td><td>AUD</td>'+
-      '<td style="text-align:right;">'+dl()+'</td></tr>')).join('');
-    return '<table><thead><tr><th>Date '+ar+'</th>'+(showClient?'<th>Client</th>':'')+'<th>Amount '+ar+'</th><th>Currency</th><th></th></tr></thead>'+
+    // Option B of the CAM Payments A/B test adds a Service column (DAS/CAM
+    // badge per row) in place of the Title Statements Disbursements tab.
+    const showSvc = AB.camPay==='B';
+    const svcSeq = (window.__camPayServices && window.__camPayServices.length) ? window.__camPayServices : ['cam'];
+    const rows=[1,2].map((_,i)=>{
+      const sv = svcSeq[i % svcSeq.length];
+      const svcCell = showSvc ? '<td><span class="badge '+sv+'"><span class="dot">'+DOLLAR_DOT+'</span>'+SERVICES[sv].label+'</span></td>' : '';
+      return '<tr><td>16 Feb 2025</td>'+svcCell+(showClient?'<td>'+CC()+'</td>':'')+'<td>123,456.78</td><td>AUD</td>'+
+      '<td style="text-align:right;">'+dl()+'</td></tr>';
+    }).join('');
+    return '<table><thead><tr><th>Date '+ar+'</th>'+(showSvc?'<th>Service</th>':'')+(showClient?'<th>Client</th>':'')+'<th>Amount '+ar+'</th><th>Currency</th><th></th></tr></thead>'+
       '<tbody>'+rows+'</tbody></table>'+camFoot();
   }
   if(key==='activity'){
@@ -2401,6 +2408,15 @@ function renderDetail(id){
   //  - Collection Accounts Management section: only titles with a CAM service.
   const services = (t.services || []).filter(s=>svcAllowed(s));   // member type also gates which statements/sections show
   const showCAM  = !CONDITIONAL_SECTIONS || services.includes('cam');
+  // CAM Payments A/B test: exposed only when the CAM section itself is shown.
+  window.__camSectionVisible = showCAM;
+  window.__camPayServices = services.filter(s=>s==='das'||s==='cam');
+  // Option B hides the whole Title Statements section, but only for titles
+  // that carry DAS and/or CAM — pure royalty (ANZ/World) titles are unaffected.
+  // Gated on showCAM too: a DAS-only title with no CAM service has nowhere
+  // else to show its statements, so Title Statements stays put for it.
+  const isDasOrCam = services.includes('das') || services.includes('cam');
+  const hideStmtForCamPayB = showCAM && isDasOrCam && AB.camPay==='B';
 
   const STMT_TABS = [
     {key:'anz',  dot:'anz', label:'Royalties ANZ', show: services.includes('anz')},
@@ -2413,6 +2429,19 @@ function renderDetail(id){
   const stmtTabsHTML = visibleTabs.map((x,i)=>(
     '<div class="stmt-tab'+(i===0?' active':'')+'" onclick="setStmtTab(\''+x.key+'\',this)"><span class="tdot '+x.dot+'">$</span>'+x.label+'</div>'
   )).join('');
+  // CAM Payments A/B test — Option A drops the Payments tab entirely (CAM tabs
+  // otherwise unchanged); Option B keeps it (camBody adds the Service column).
+  const CAM_TABS = [
+    {key:'payments',   label:'Payments',            show: AB.camPay!=='A'},
+    {key:'activity',   label:'Activity Statements',  show: true},
+    {key:'marketing',  label:'Marketing Agreements', show: true},
+    {key:'sales',      label:'Sales Reports',        show: true},
+    {key:'beneficiary',label:'Beneficiary Access',   show: true},
+  ].filter(x=>x.show);
+  const camFirstKey = CAM_TABS[0].key;
+  const camTabsHTML = CAM_TABS.map((x,i)=>(
+    '<div class="stmt-tab'+(i===0?' active':'')+'" onclick="setCamTab(\''+x.key+'\',this)">'+x.label+'</div>'
+  )).join('');
   const camSection = !showCAM ? '' : FLAGS.errorTitleCAM ? (
     // section-level fetch error: keep the heading, drop the access line, tabs + table
     '<h2 class="section-title" style="margin-bottom:16px;">Collection Account Management</h2>'+ errorState()
@@ -2421,15 +2450,9 @@ function renderDetail(id){
     '<div class="access-line">Your access Level: <span class="pill">Producer</span><span class="pill">Party</span> determines the visibility of information and sections below.</div>'+
     '<div class="panel">'+
       '<div class="stmt-topbar">'+
-        '<div class="stmt-tabs" id="cam-tabs">'+
-          '<div class="stmt-tab active" onclick="setCamTab(\'payments\',this)">Payments</div>'+
-          '<div class="stmt-tab" onclick="setCamTab(\'activity\',this)">Activity Statements</div>'+
-          '<div class="stmt-tab" onclick="setCamTab(\'marketing\',this)">Marketing Agreements</div>'+
-          '<div class="stmt-tab" onclick="setCamTab(\'sales\',this)">Sales Reports</div>'+
-          '<div class="stmt-tab" onclick="setCamTab(\'beneficiary\',this)">Beneficiary Access</div>'+
-        '</div>'+
+        '<div class="stmt-tabs" id="cam-tabs">'+ camTabsHTML +'</div>'+
       '</div>'+
-      '<div id="cam-body">'+ camBody('payments') +'</div>'+
+      '<div id="cam-body">'+ camBody(camFirstKey) +'</div>'+
     '</div>'
   );
 
@@ -2502,7 +2525,7 @@ function renderDetail(id){
   );
 
   // Title Statements — section error keeps the heading, drops the tabs/search/table
-  const stmtSection = FLAGS.errorTitleStatements ? (
+  const stmtSection = hideStmtForCamPayB ? '' : FLAGS.errorTitleStatements ? (
     '<div class="section-head" style="margin:0 0 16px;"><h2 class="section-title">Title Statements</h2></div>'+
     '<div style="margin-bottom:48px;">'+errorState()+'</div>'
   ) : (
@@ -2811,7 +2834,7 @@ function clientStmtBody(key, titles){
   const svcMatch = key==='disb' ? ['das','cam'] : [key];
   const n = titles.filter(t=>t.services.some(s=>svcMatch.includes(s))).length;
   return '<table><thead><tr>'+
-      '<th>Date '+ar+'</th><th>Title '+ar+'</th><th>Service '+ar+'</th><th>Amount '+ar+'</th><th>Currency '+ar+'</th><th></th>'+
+      '<th>Date '+ar+'</th><th>Title '+ar+'</th><th>Service</th><th>Amount '+ar+'</th><th>Currency '+ar+'</th><th></th>'+
     '</tr></thead><tbody>'+clientStmtRows(key,titles)+'</tbody></table>'+
     '<div class="tbl-foot"><span>1–'+n+' of '+n+'</span>'+camPager+'</div>';
 }
@@ -4078,11 +4101,18 @@ const BADGES_TEST = { title:'Service badges', key:'badges', options:[
 ] };
 // Each route maps to an array of tests; the panel renders them top-to-bottom.
 const AB_TESTS = {
-  detail: [{ title:'Royalties registration', key:'reg', options:[
-    {v:'A', label:'A · In-section buttons'},
-    {v:'B', label:'B · Header primary button (Current)'},
-    {v:'C', label:'C · "Title actions" menu'},
-  ]}],
+  detail: [
+    { title:'Royalties registration', key:'reg', options:[
+      {v:'A', label:'A · In-section buttons'},
+      {v:'B', label:'B · Header primary button (Current)'},
+      {v:'C', label:'C · "Title actions" menu'},
+    ]},
+    // Only meaningful when the CAM section itself is showing (title carries CAM).
+    { title:'Collection Account Management — Payments', key:'camPay', when:()=>window.__camSectionVisible, options:[
+      {v:'A', label:'A · Remove the Payments tab (CAM tabs otherwise unchanged)'},
+      {v:'B', label:'B · Keep Payments (adds a Service column); hide Title Statements for DAS/CAM titles'},
+    ]},
+  ],
   // Badge variants only make sense when a title can carry several services, so the
   // test is hidden unless Combined Titles is on.
   titles: [Object.assign({}, BADGES_TEST, { when:()=>FLAGS.combinedTitles })],
@@ -4124,7 +4154,7 @@ const ERRSTATE_TEST = { title:'Error state style', key:'errstate', when:(r)=>rou
 ['home','titles','tasks','clients','detail'].concat(ES_ROUTES).forEach(function(r){
   AB_TESTS[r] = (AB_TESTS[r]||[]).concat([ERRSTATE_TEST]);
 });
-let AB = { reg:'B', badges:'A', indreg:'A', entitylock:'A', onbLayout:'A', errstate:'A' };
+let AB = { reg:'B', badges:'A', indreg:'A', entitylock:'A', onbLayout:'A', errstate:'A', camPay:'A' };
 function closeABFab(){
   document.getElementById('ab-panel').classList.remove('open');
   document.getElementById('ab-fab-btn').classList.remove('open');
